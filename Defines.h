@@ -2,18 +2,18 @@
 #define MY_DEFINES_H
 
 #include <CenturyGothic24.h>
-#include <CenturyGothic60.h>
-#include <AlarmClock60.h> // no special chars, only nums
-#include <AlarmClockRegular24.h>
+// #include <CenturyGothic60.h>
+// #include <AlarmClock60.h> // no special chars, only nums
+// #include <AlarmClockRegular24.h>
 
-#include <Segment760.h> // all chars but not very close to old watch
-#include <DigitalDisplayRegular60.h> // no special chars, only nums
-#include <DigitalDisplayRegular76.h>
-#include <Segment76.h> // some special chars but poor small size
-#include <Segment34.h>
-#include <Segment24.h>
-#include <Segment755.h>
-#include <Segment769.h>
+// #include <Segment760.h> // all chars but not very close to old watch
+// #include <DigitalDisplayRegular60.h> // no special chars, only nums
+// #include <DigitalDisplayRegular76.h>
+// #include <Segment76.h> // some special chars but poor small size
+// #include <Segment34.h>
+// #include <Segment24.h>
+// #include <Segment755.h>
+// #include <Segment769.h>
 
 #define SDA 23
 #define SCL 22
@@ -69,5 +69,25 @@ bool sustainedPress = false;
 unsigned long highStartTime = 0;
 bool sleeping = false; // Track if the device is sleeping
 #define SUSTAINED_HIGH_DURATION 2000  // Duration in ms for sustained high signal
+
+// Bluetooth
+
+// LED items
+unsigned long pixelPrevious = 0;        // Previous Pixel Millis
+unsigned long patternPrevious = 0;      // Previous Pattern Millis
+int           patternCurrent = 0;       // Current Pattern Number
+int           patternInterval = 5000;   // Pattern Interval (ms)
+bool          patternComplete = false;
+
+int           pixelInterval = 50;       // Pixel Interval (ms)
+int           pixelQueue = 0;           // Pattern Pixel Queue
+int           pixelCycle = 0;           // Pattern Pixel Cycle
+uint16_t      pixelNumber = LED_COUNT;  // Total Number of Pixels
+
+unsigned long lastColorUpdate = 0;
+const unsigned long colorUpdateInterval = 150; // ms, adjust for speed
+float colorWheelPos = 0.0; // 0-360
+const float colorStep = 90.0; // 360/4 = 90deg separation for 4 LEDs
+
 
 #endif // MY_DEFINES_H
