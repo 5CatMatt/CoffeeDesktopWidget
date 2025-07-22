@@ -1,2 +1,15 @@
 # Ignore private files
 Secrets.h
+
+CenturyGothic24.h
+CenturyGothic60.h
+AlarmClock60.h
+AlarmClockRegular24.h
+Segment760.h
+DigitalDisplayRegular60.h
+DigitalDisplayRegular76.h
+Segment76.h
+Segment34.h
+Segment24.h
+Segment755.h
+Segment769.h
