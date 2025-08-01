@@ -39,15 +39,12 @@ void setup() {
 
   // setup GPIO
   pinMode(powerEnable, OUTPUT);
-  digitalWrite(powerEnable, HIGH);  // LOW state disables the esp32 EN pin resulting in full shutdown - TODO wakeup not supported yet
+  digitalWrite(powerEnable, HIGH);  // LOW state disables the esp32 EN pin resulting in full shutdown
 
   // Set the wakeup pin as an input
   pinMode(BUTTON_PIN, INPUT);
-  
-  // Enable the internal pull-up resistor on the wakeup pin
   gpio_pullup_en(BUTTON_PIN);
-
-  esp_sleep_enable_ext0_wakeup(BUTTON_PIN , 0);  // 1 = high level, 0 = low level
+  esp_sleep_enable_ext0_wakeup(BUTTON_PIN , 0);  // Button pulls low on press
 
   // Create a task to monitor the wakeup pin
   xTaskCreate(MonitorTask, "MonitorTask", 2048, NULL, 1, NULL);
@@ -66,9 +63,10 @@ void setup() {
 
   SetupOTA();
 
-  strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
-  strip.show();            // Turn OFF all pixels ASAP
-  strip.setBrightness(ledBrightness); // Set BRIGHTNESS to about 1/5 (max = 255)
+  // Init NeoPixel strip, 4 px ring in this case
+  strip.begin(); 
+  strip.show();
+  strip.setBrightness(ledBrightness);
 }
 
 void loop() {
@@ -136,9 +134,6 @@ void DrawBlueRingPage() {
 
     DrawAnimatedProgressBar(centerX - 60, centerY - 8, 120, 16, progress, 100, TFT_GREEN, TFT_DARKGREY);
   }
-
-  
-
   // drawCenteredTextSprite(centerText, currentTemperature + "°", CenturyGothic60, 40, 90, MC_DATUM);
   // drawCenteredTextSprite(centerSubText, currentHumidity + "%", CenturyGothic24, 80, 150, MC_DATUM);
 }
