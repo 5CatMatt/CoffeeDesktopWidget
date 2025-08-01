@@ -34,22 +34,6 @@ CST816S touch(SDA, SCL, RST, INT);
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
-unsigned long pixelPrevious = 0;        // Previous Pixel Millis
-unsigned long patternPrevious = 0;      // Previous Pattern Millis
-int           patternCurrent = 0;       // Current Pattern Number
-int           patternInterval = 5000;   // Pattern Interval (ms)
-bool          patternComplete = false;
-
-int           pixelInterval = 50;       // Pixel Interval (ms)
-int           pixelQueue = 0;           // Pattern Pixel Queue
-int           pixelCycle = 0;           // Pattern Pixel Cycle
-uint16_t      pixelNumber = LED_COUNT;  // Total Number of Pixels
-
-unsigned long lastColorUpdate = 0;
-const unsigned long colorUpdateInterval = 150; // ms, adjust for speed
-float colorWheelPos = 0.0; // 0-360
-const float colorStep = 90.0; // 360/4 = 90deg separation for 4 LEDs
-
 void setup() {
   Serial.begin(115200);
 
