@@ -160,31 +160,21 @@ void DrawGreenRingPage() {
 }
 
 void DrawGreenPage() {
-  // Animated color wheel (rainbow sweep)
-  static float angleOffset = 0;
-  static unsigned long lastUpdate = 0;
+  static unsigned long startTime = millis();
   unsigned long now = millis();
+  float pulse = (sin((now - startTime) / 400.0) + 1.0) * 0.5; // 0..1
 
-  if (now - lastUpdate > 300) { // Adjust speed here
-    lastUpdate = now;
-    angleOffset += 2.0; // Adjust rotation speed here
-    if (angleOffset >= 360.0) angleOffset -= 360.0;
+  tft.fillScreen(colorMossGreen);
 
-    tft.fillScreen(colorMossGreen);
+  int cx = centerX;
+  int cy = centerY;
+  int maxR = maxRadius - 10;
+  int minR = 30;
+  int r = minR + (int)((maxR - minR) * pulse);
 
-    int cx = centerX;
-    int cy = centerY;
-    int rOuter = maxRadius - 2;
-    int rInner = maxRadius - 30; // thickness of the wheel
-
-    for (int angle = 0; angle < 360; angle += 4) {
-      float hue = fmod(angle + angleOffset, 360.0);
-      uint32_t color = ColorFromHSV(hue, 1.0, 1.0);
-
-      // Draw arc segment
-      tft.drawSmoothArc(cx, cy, rOuter, rInner, angle, angle + 4, color, colorMossGreen);
-    }
-  }
+  tft.drawCircle(cx, cy, r, TFT_GREEN);
+  tft.drawCircle(cx, cy, r / 2, TFT_WHITE);
+  tft.fillCircle(cx, cy, r / 4, TFT_YELLOW);
 }
 
 // **************** Draw Functions - Helpers **************** //
