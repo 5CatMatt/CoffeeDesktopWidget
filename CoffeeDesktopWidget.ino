@@ -99,8 +99,38 @@ void loop() {
 // **************** Draw Functions - Pages **************** //
 
 void PageNavigation() {
+  static unsigned long lastUpdate = 0;
+  unsigned long now = millis();
+  unsigned long frameInterval = 33; // Default ~30 FPS
+
   switch (selectedPage) {
-    case pageBlueRing: 
+    case pageBlueRing:
+      frameInterval = 16;
+      break;
+    case pageGreenRing:
+      frameInterval = 33;
+      break;
+    case pageGreen:
+      frameInterval = 16;
+      break;
+    // Try varing the frame rate of both of these pages, 160 was cool
+    case pageEyePulse:
+      frameInterval = 16;
+      break;
+    case pageOrbitPulse:
+      frameInterval = 16;
+      break;
+    default:
+      selectedPage = pageBlueRing;
+      frameInterval = 16;
+      break;
+  }
+
+  if (now - lastUpdate < frameInterval) return;
+    lastUpdate = now;
+
+  switch (selectedPage) {
+    case pageBlueRing:
       DrawBlueRingPage();
       break;
     case pageGreenRing:
@@ -116,8 +146,6 @@ void PageNavigation() {
       DrawOrbitPulsePage();
       break;
     default:
-      // Default to blue ring if an invalid page is selected
-      selectedPage = pageBlueRing;
       DrawBlueRingPage();
       break;
   }
