@@ -105,13 +105,13 @@ void PageNavigation() {
 
   switch (selectedPage) {
     case pageBlueRing:
-      frameInterval = 16;
+      frameInterval = 42;
       break;
     case pageGreenRing:
       frameInterval = 33;
       break;
     case pageGreen:
-      frameInterval = 16;
+      frameInterval = 20;
       break;
     // Try varing the frame rate of both of these pages, 160 was cool
     case pageEyePulse:
