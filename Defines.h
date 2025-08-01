@@ -24,9 +24,11 @@
 const uint8_t pageBlueRing = 0;
 const uint8_t pageGreenRing = 1;
 const uint8_t pageGreen = 2;
+const uint8_t pageEyePulse = 3;
+const uint8_t pageOrbitPulse = 4;
 
 uint8_t selectedPage = pageBlueRing;
-uint8_t maxPageNumber = 2;
+uint8_t maxPageNumber = 4;
 bool displayUpdate = true;  // Only draw the entire tft when the page needs to be wiped
 
 // LCD colors

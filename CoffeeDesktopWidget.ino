@@ -109,8 +109,21 @@ void PageNavigation() {
     case pageGreen:
       DrawGreenPage();
       break;
+    case pageEyePulse:
+      DrawEyePulsePage();
+      break;
+    case pageOrbitPulse:
+      DrawOrbitPulsePage();
+      break;
+    default:
+      // Default to blue ring if an invalid page is selected
+      selectedPage = pageBlueRing;
+      DrawBlueRingPage();
+      break;
   }
 }
+
+// **************** Pages **************** //
 
 void DrawBlueRingPage() {
   // Blue page with white outter ring and centered text elements
@@ -174,7 +187,72 @@ void DrawGreenPage() {
 
   tft.drawCircle(cx, cy, r, TFT_GREEN);
   tft.drawCircle(cx, cy, r / 2, TFT_WHITE);
+  // tft.fillCircle(cx, cy, r / 4, TFT_YELLOW);
+}
+
+void DrawEyePulsePage(){
+  static unsigned long startTime = millis();
+  static int lastR = 0;
+  unsigned long now = millis();
+  float pulse = (sin((now - startTime) / 250.0) + 1.0) * 0.5; // Faster pulse
+
+  int cx = centerX;
+  int cy = centerY;
+  int maxR = maxRadius - 10;
+  int minR = 30;
+  int r = minR + (int)((maxR - minR) * pulse);
+
+  // Erase previous frame by overdrawing with background
+  tft.fillCircle(cx, cy, lastR, colorMossGreen);
+
+  // Draw new frame
+  tft.drawCircle(cx, cy, r, TFT_GREEN);
+  tft.drawCircle(cx, cy, r / 2, TFT_WHITE);
   tft.fillCircle(cx, cy, r / 4, TFT_YELLOW);
+
+  lastR = r;
+}
+
+void DrawOrbitPulsePage(){
+  static unsigned long startTime = millis();
+  static int lastR = 0;
+  unsigned long now = millis();
+  float pulse = (sin((now - startTime) / 200.0) + 1.0) * 0.5; // Even faster pulse
+
+  int cx = centerX;
+  int cy = centerY;
+  int maxR = maxRadius - 10;
+  int minR = 30;
+  int r = minR + (int)((maxR - minR) * pulse);
+
+  // Erase previous frame by overdrawing with background
+  tft.fillCircle(cx, cy, lastR + 4, colorMossGreen);
+
+  // Animated highlight angle
+  float highlightAngle = fmod((now - startTime) / 3.0, 360.0);
+  float rad = highlightAngle * 3.14159 / 180.0;
+  int hx = cx + (int)(r * 0.7 * cos(rad));
+  int hy = cy + (int)(r * 0.7 * sin(rad));
+
+  // Draw outer pulsing ring with color cycling
+  for (int i = 0; i < 3; ++i) {
+    float ringPulse = (sin((now - startTime) / (200.0 + i * 80)) + 1.0) * 0.5;
+    int rr = r - i * 8;
+    uint32_t color = ColorFromHSV(fmod(highlightAngle + i * 60, 360.0), 1.0, 1.0 - i * 0.25);
+    tft.drawCircle(cx, cy, rr, color);
+  }
+
+  // Draw main white eye ring
+  tft.drawCircle(cx, cy, r / 2, TFT_WHITE);
+
+  // Draw glowing yellow iris
+  tft.fillCircle(cx, cy, r / 4, TFT_YELLOW);
+  tft.drawCircle(cx, cy, r / 4 + 2, TFT_ORANGE);
+
+  // Draw moving highlight
+  tft.fillCircle(hx, hy, r / 10, TFT_WHITE);
+
+  lastR = r;
 }
 
 // **************** Draw Functions - Helpers **************** //
