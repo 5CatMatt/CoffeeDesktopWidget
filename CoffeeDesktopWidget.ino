@@ -2,8 +2,6 @@
 
 Desktop widget
 
-Read and display temperature and humidity on a waveshare 1.8" round LCD with touch. 
-
 Target microcontroller is an ESP-32-WROOM
 
 Battery voltage is available on hardware.
@@ -113,18 +111,21 @@ void PageNavigation() {
     case pageGreen:
       frameInterval = 20;
       break;
-    // Try varing the frame rate of both of these pages, 160 was cool
     case pageEyePulse:
-      frameInterval = 16;
+      frameInterval = 42;
       break;
     case pageOrbitPulse:
       frameInterval = 16;
+      break;
+    case pageEyePulsePause:
+      frameInterval = 42;
       break;
     default:
       selectedPage = pageBlueRing;
       frameInterval = 16;
       break;
   }
+
 
   if (now - lastUpdate < frameInterval) return;
     lastUpdate = now;
@@ -141,6 +142,9 @@ void PageNavigation() {
       break;
     case pageEyePulse:
       DrawEyePulsePage();
+      break;
+    case pageEyePulsePause:
+      DrawEyePulsePausePage();
       break;
     case pageOrbitPulse:
       DrawOrbitPulsePage();
@@ -219,15 +223,16 @@ void DrawGreenPage() {
 }
 
 void DrawEyePulsePage(){
+  float inversePulseSpeed = 700.0; // Adjust for speed, higher = slower pulse
   static unsigned long startTime = millis();
   static int lastR = 0;
   unsigned long now = millis();
-  float pulse = (sin((now - startTime) / 250.0) + 1.0) * 0.5; // Faster pulse
+  float pulse = (sin((now - startTime) / inversePulseSpeed) + 1.0) * 0.5; // Faster pulse
 
   int cx = centerX;
   int cy = centerY;
   int maxR = maxRadius - 10;
-  int minR = 30;
+  int minR = 3;
   int r = minR + (int)((maxR - minR) * pulse);
 
   // Erase previous frame by overdrawing with background
@@ -235,8 +240,56 @@ void DrawEyePulsePage(){
 
   // Draw new frame
   tft.drawCircle(cx, cy, r, TFT_GREEN);
-  tft.drawCircle(cx, cy, r / 2, TFT_WHITE);
-  tft.fillCircle(cx, cy, r / 4, TFT_YELLOW);
+  // tft.drawCircle(cx, cy, r / 2, TFT_WHITE);
+  // tft.fillCircle(cx, cy, r / 4, TFT_YELLOW);
+
+  lastR = r;
+}
+
+void DrawEyePulsePausePage() {
+  // Configurable buffer for min/max radius
+  static const int minBuffer = 5; // pixels to add to minR
+  static const int maxBuffer = 5; // pixels to subtract from maxR
+  static const unsigned long pauseDuration = 1000; // ms to pause at min/max
+  static unsigned long startTime = millis();
+  static int lastR = 0;
+  static bool paused = false;
+  static unsigned long pauseStart = 0;
+  static bool atMax = false, atMin = false;
+
+  unsigned long now = millis();
+  float inversePulseSpeed = 4.2;
+  int cx = centerX;
+  int cy = centerY;
+  int maxR = maxRadius - 10 - maxBuffer;
+  int minR = 3 + minBuffer;
+  float pulse = (sin((now - startTime) / inversePulseSpeed) + 1.0) * 0.5;
+  int r = minR + (int)((maxR - minR) * pulse);
+
+  // Detect if at min or max
+  atMax = (r >= maxR);
+  atMin = (r <= minR);
+
+  if (!paused && (atMax || atMin)) {
+    paused = true;
+    pauseStart = now;
+  }
+
+  if (paused) {
+    // Hold at min or max radius
+    r = atMax ? maxR : minR;
+    if (now - pauseStart >= pauseDuration) {
+      paused = false;
+      // Reset startTime so pulse resumes smoothly
+      startTime = now - (atMax ? (inversePulseSpeed * 3.14159 / 2) : 0);
+    }
+  }
+
+  // Erase previous frame by overdrawing with background
+  tft.fillCircle(cx, cy, lastR, colorMossGreen);
+
+  // Draw new frame
+  tft.drawCircle(cx, cy, r, TFT_GREEN);
 
   lastR = r;
 }
