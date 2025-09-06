@@ -11,8 +11,9 @@ automatically to lessen negative effect.
 
 */
 
-#include <WiFi.h>
-#include <ArduinoOTA.h>
+
+// #include <WiFi.h>
+// #include <ArduinoOTA.h>
 
 #include <Defines.h>
 #include <Secrets.h>
@@ -25,6 +26,40 @@ TFT_eSprite centerText = TFT_eSprite(&tft);
 TFT_eSprite centerSubText = TFT_eSprite(&tft);
 TFT_eSprite upperSubText = TFT_eSprite(&tft);
 
+// === GLOBAL GUI VARIABLES WITH SERIAL KEYS ===
+uint16_t colorBackground = 0x02F5; // Default: colorCalmBlue, KEY: BGC
+uint16_t colorText = 0xFFFF;       // Default: colorWhite,    KEY: TXT
+uint16_t colorMossGreen = 0x4B28;  // KEY: MOS
+uint16_t colorCalmBlue = 0x02F5;   // KEY: CBL
+uint16_t colorWhite = 0xFFFF;      // KEY: WHT
+uint16_t colorPulseDraw = 0x02F5;    // KEY: CPD
+int maxRadius = 120;               // KEY: MRD
+int ringWidth = 12;                // KEY: RNW
+float colorWheelPos = 0.0;         // KEY: CWP
+float colorStep = 90.0;            // KEY: CST
+unsigned long colorUpdateInterval = 100; // ms, KEY: CUI
+int ledBrightness = 32;            // KEY: LBR
+int backlightLevel = 128;          // KEY: BLT
+float pulseSpeedGreen = 400.0;     // KEY: PSG
+float pulseSpeedEye = 420.0;       // KEY: PSE
+int eyePulseMaxOffset = 10;        // KEY: EPM
+int eyePulseMinR = 3;              // KEY: EPMR
+float pulseSpeedOrbit = 200.0;     // KEY: PSO
+int minBuffer = 5;                 // KEY: MNB
+int maxBuffer = 5;                 // KEY: MXB
+unsigned long pauseDuration = 1000; // ms, KEY: PAD
+// New pixel/pattern variables
+unsigned long pixelPrevious = 0;        // Previous Pixel Millis, KEY: PXP
+unsigned long patternPrevious = 0;      // Previous Pattern Millis, KEY: PTP
+int           patternCurrent = 0;       // Current Pattern Number, KEY: PTN
+int           patternInterval = 5000;   // Pattern Interval (ms), KEY: PTI
+bool          patternComplete = false;  // KEY: PTC
+int           pixelInterval = 50;       // Pixel Interval (ms), KEY: PXI
+int           pixelQueue = 0;           // Pattern Pixel Queue, KEY: PXQ
+int           pixelCycle = 0;           // Pattern Pixel Cycle, KEY: PXC
+uint16_t      pixelNumber = LED_COUNT;  // Total Number of Pixels, KEY: PXN
+unsigned long lastColorUpdate = 0;      // KEY: LCU
+
 // Touchscreen
 #include <CST816S.h>
 CST816S touch(SDA, SCL, RST, INT);
@@ -32,8 +67,51 @@ CST816S touch(SDA, SCL, RST, INT);
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+// Function prototype for FreeRTOS task
+void MonitorTask(void *pvParameters);
+
 void setup() {
+  Serial.println("EPM: eyePulseMaxOffset (int, offset from maxRadius)");
+  Serial.println("EPMR: eyePulseMinR (int, min radius)");
   Serial.begin(115200);
+  Serial.println("\n=== Coffee Desktop Widget ===");
+
+  Serial.println("PXP: pixelPrevious (ms, unsigned long)");
+  Serial.println("PTP: patternPrevious (ms, unsigned long)");
+  Serial.println("PTN: patternCurrent (int)");
+  Serial.println("PTI: patternInterval (ms, int)");
+  Serial.println("PTC: patternComplete (0/1, bool)");
+  Serial.println("PXI: pixelInterval (ms, int)");
+  Serial.println("PXQ: pixelQueue (int)");
+  Serial.println("PXC: pixelCycle (int)");
+  Serial.println("PXN: pixelNumber (uint16_t)");
+  Serial.println("LCU: lastColorUpdate (ms, unsigned long)");
+
+
+  // === SERIAL HELP FOR GUI VARIABLES ===
+  Serial.println("\n=== GUI Variable Serial Control ===");
+  Serial.println("Use: set <KEY> <value> (e.g. set MRD 90)");
+  Serial.println("BGC: colorBackground (hex, e.g. 0x20C4)");
+  Serial.println("TXT: colorText (hex)");
+  Serial.println("MOS: colorMossGreen (hex)");
+  Serial.println("CBL: colorCalmBlue (hex)");
+  Serial.println("WHT: colorWhite (hex)");
+  Serial.println("CPD: colorPulseDraw (hex)");
+  Serial.println("MRD: maxRadius (int)");
+  Serial.println("RNW: ringWidth (int)");
+  Serial.println("CWP: colorWheelPos (float)");
+  Serial.println("CST: colorStep (float)");
+  Serial.println("CUI: colorUpdateInterval (ms)");
+  Serial.println("LBR: ledBrightness (0-255)");
+  Serial.println("BLT: backlightLevel (0-255)");
+  Serial.println("PSG: pulseSpeedGreen (float, ms)");
+  Serial.println("PSE: pulseSpeedEye (float, ms)");
+  Serial.println("PSO: pulseSpeedOrbit (float, ms)");
+  Serial.println("MNB: minBuffer (int)");
+  Serial.println("MXB: maxBuffer (int)");
+  Serial.println("PAD: pauseDuration (ms)");
+  Serial.println("Type 'help' for this list again.\n");
+  
 
   // setup GPIO
   pinMode(powerEnable, OUTPUT);
@@ -50,16 +128,15 @@ void setup() {
   // Enable draw and touch
   SetupLCD();
 
-  // Enable wireless
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println(" CONNECTED");
-
-  SetupOTA();
+  // WiFi and OTA features are disabled to save memory
+  // WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  // while (WiFi.status() != WL_CONNECTED) {
+  //   delay(500);
+  //   Serial.print(".");
+  // }
+  // Serial.println(" CONNECTED");
+  // SetupOTA();
 
   // Init NeoPixel strip, 4 px ring in this case
   strip.begin(); 
@@ -68,18 +145,67 @@ void setup() {
 }
 
 void loop() {
+  
+  // SERIAL INTERFACE for all GUI variables
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    if (input.equalsIgnoreCase("help")) {
+      setup(); // Print help again
+    } else if (input.startsWith("set ")) {
+      int keyStart = 4;
+      String key = input.substring(keyStart, keyStart+3);
+      String valStr = input.substring(keyStart+4);
+      valStr.trim();
+      if (key == "PXP") pixelPrevious = valStr.toInt();
+      else if (key == "PTP") patternPrevious = valStr.toInt();
+      else if (key == "PTN") patternCurrent = valStr.toInt();
+      else if (key == "PTI") patternInterval = valStr.toInt();
+      else if (key == "PTC") patternComplete = (valStr.toInt() != 0);
+      else if (key == "PXI") pixelInterval = valStr.toInt();
+      else if (key == "PXQ") pixelQueue = valStr.toInt();
+      else if (key == "PXC") pixelCycle = valStr.toInt();
+      else if (key == "PXN") pixelNumber = valStr.toInt();
+      else if (key == "LCU") lastColorUpdate = valStr.toInt();
+      else if (key == "BGC") colorBackground = (uint16_t)strtol(valStr.c_str(), NULL, 0);
+      else if (key == "TXT") colorText = (uint16_t)strtol(valStr.c_str(), NULL, 0);
+      else if (key == "MOS") colorMossGreen = (uint16_t)strtol(valStr.c_str(), NULL, 0);
+      else if (key == "CBL") colorCalmBlue = (uint16_t)strtol(valStr.c_str(), NULL, 0);
+      else if (key == "WHT") colorWhite = (uint16_t)strtol(valStr.c_str(), NULL, 0);
+      else if (key == "CPD") colorPulseDraw = (uint16_t)strtol(valStr.c_str(), NULL, 0);
+      else if (key == "MRD") maxRadius = valStr.toInt();
+      else if (key == "RNW") ringWidth = valStr.toInt();
+      else if (key == "CWP") colorWheelPos = valStr.toFloat();
+      else if (key == "CST") colorStep = valStr.toFloat();
+      else if (key == "CUI") colorUpdateInterval = valStr.toInt();
+      else if (key == "LBR") { ledBrightness = valStr.toInt(); strip.setBrightness(ledBrightness); strip.show(); }
+      else if (key == "BLT") { backlightLevel = valStr.toInt(); analogWrite(BACKLIGHT, backlightLevel); }
+      else if (key == "PSG") pulseSpeedGreen = valStr.toFloat();
+      else if (key == "PSE") pulseSpeedEye = valStr.toFloat();
+      else if (key == "PSO") pulseSpeedOrbit = valStr.toFloat();
+      else if (key == "MNB") minBuffer = valStr.toInt();
+      else if (key == "MXB") maxBuffer = valStr.toInt();
+      else if (key == "PAD") pauseDuration = valStr.toInt();
+      else if (key == "EPM") eyePulseMaxOffset = valStr.toInt();
+      else if (key == "EPMR") eyePulseMinR = valStr.toInt();
+      else Serial.println("Unknown key. Type 'help' for list.");
+      Serial.print("Set "); Serial.print(key); Serial.print(" to "); Serial.println(valStr);
+    } else {
+      Serial.println("Unknown command. Type 'help' for list.");
+    }
+  }
   // Network items
-  ArduinoOTA.handle();
+  // ArduinoOTA.handle();
 
-  // Handle touch events - TODO orientation is not implemented yet
+  // Handle touch events
   NavigationDebounce();
 
   if (touch.available()) {
     if (touchNavEnabled) {
       selectedPage++;
       if (selectedPage > maxPageNumber) { selectedPage = 0; }
-      displayUpdate = true;
-      touchNavEnabled = false;
+        displayUpdate = true;
+        touchNavEnabled = false;
     }
   }
 
@@ -207,7 +333,7 @@ void DrawGreenRingPage() {
 void DrawGreenPage() {
   static unsigned long startTime = millis();
   unsigned long now = millis();
-  float pulse = (sin((now - startTime) / 400.0) + 1.0) * 0.5; // 0..1
+  float pulse = (sin((now - startTime) / pulseSpeedGreen) + 1.0) * 0.5; // 0..1
 
   tft.fillScreen(colorMossGreen);
 
@@ -223,34 +349,31 @@ void DrawGreenPage() {
 }
 
 void DrawEyePulsePage(){
-  float inversePulseSpeed = 700.0; // Adjust for speed, higher = slower pulse
+  float inversePulseSpeed = pulseSpeedEye; // Adjust for speed, higher = slower pulse
   static unsigned long startTime = millis();
   static int lastR = 0;
   unsigned long now = millis();
-  float pulse = (sin((now - startTime) / inversePulseSpeed) + 1.0) * 0.5; // Faster pulse
+  float pulse = (sin((now - startTime) / inversePulseSpeed) + 1.0) * 0.5;
 
   int cx = centerX;
   int cy = centerY;
-  int maxR = maxRadius - 10;
-  int minR = 3;
-  int r = minR + (int)((maxR - minR) * pulse);
+  int maxR = maxRadius - eyePulseMaxOffset;
+  int minR = eyePulseMinR;
+  int circleRadius = minR + (int)((maxR - minR) * pulse);
 
   // Erase previous frame by overdrawing with background
   tft.fillCircle(cx, cy, lastR, colorMossGreen);
 
   // Draw new frame
-  tft.drawCircle(cx, cy, r, TFT_GREEN);
+  tft.drawCircle(cx, cy, circleRadius, colorPulseDraw);
   // tft.drawCircle(cx, cy, r / 2, TFT_WHITE);
   // tft.fillCircle(cx, cy, r / 4, TFT_YELLOW);
 
-  lastR = r;
+  lastR = circleRadius;
 }
 
 void DrawEyePulsePausePage() {
-  // Configurable buffer for min/max radius
-  static const int minBuffer = 5; // pixels to add to minR
-  static const int maxBuffer = 5; // pixels to subtract from maxR
-  static const unsigned long pauseDuration = 1000; // ms to pause at min/max
+  // minBuffer, maxBuffer, pauseDuration are now global
   static unsigned long startTime = millis();
   static int lastR = 0;
   static bool paused = false;
@@ -298,7 +421,7 @@ void DrawOrbitPulsePage(){
   static unsigned long startTime = millis();
   static int lastR = 0;
   unsigned long now = millis();
-  float pulse = (sin((now - startTime) / 200.0) + 1.0) * 0.5; // Even faster pulse
+  float pulse = (sin((now - startTime) / pulseSpeedOrbit) + 1.0) * 0.5; // Even faster pulse
 
   int cx = centerX;
   int cy = centerY;
@@ -391,47 +514,47 @@ uint32_t ColorFromHSV(float h, float s, float v) {
 
 // **************** Network Functions **************** //
 
-void SetupOTA() {
-  // Authentication details
-  ArduinoOTA.setHostname(OTA_HOST_NAME);
-  ArduinoOTA.setPassword(OTA_PASSWORD);
-
-  ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH) {
-        type = "sketch";
-      } else {  // U_SPIFFS
-        type = "filesystem";
-      }
-
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
-    })
-    .onEnd([]() {
-      Serial.println("\nEnd");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) {
-        Serial.println("Auth Failed");
-      } else if (error == OTA_BEGIN_ERROR) {
-        Serial.println("Begin Failed");
-      } else if (error == OTA_CONNECT_ERROR) {
-        Serial.println("Connect Failed");
-      } else if (error == OTA_RECEIVE_ERROR) {
-        Serial.println("Receive Failed");
-      } else if (error == OTA_END_ERROR) {
-        Serial.println("End Failed");
-      }
-    });
-
-  ArduinoOTA.begin();
-  Serial.println("OTA Initialized");
-}
+// void SetupOTA() {
+//   // Authentication details
+//   ArduinoOTA.setHostname(OTA_HOST_NAME);
+//   ArduinoOTA.setPassword(OTA_PASSWORD);
+//
+//   ArduinoOTA
+//     .onStart([]() {
+//       String type;
+//       if (ArduinoOTA.getCommand() == U_FLASH) {
+//         type = "sketch";
+//       } else {  // U_SPIFFS
+//         type = "filesystem";
+//       }
+//
+//       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+//       Serial.println("Start updating " + type);
+//     })
+//     .onEnd([]() {
+//       Serial.println("\nEnd");
+//     })
+//     .onProgress([](unsigned int progress, unsigned int total) {
+//       Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+//     })
+//     .onError([](ota_error_t error) {
+//       Serial.printf("Error[%u]: ", error);
+//       if (error == OTA_AUTH_ERROR) {
+//         Serial.println("Auth Failed");
+//       } else if (error == OTA_BEGIN_ERROR) {
+//         Serial.println("Begin Failed");
+//       } else if (error == OTA_CONNECT_ERROR) {
+//         Serial.println("Connect Failed");
+//       } else if (error == OTA_RECEIVE_ERROR) {
+//         Serial.println("Receive Failed");
+//       } else if (error == OTA_END_ERROR) {
+//         Serial.println("End Failed");
+//       }
+//     });
+//
+//   ArduinoOTA.begin();
+//   Serial.println("OTA Initialized");
+// }
 
 // **************** User Interface Functions **************** //
 
