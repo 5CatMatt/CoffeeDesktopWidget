@@ -18,6 +18,10 @@ automatically to lessen negative effect.
 #include <Defines.h>
 #include <Secrets.h>
 
+#include <Thermistor.h>
+#include <NTC_Thermistor.h>
+Thermistor* thermistor;
+
 // Graphics
 #include <TFT_eSPI.h>
 TFT_eSPI tft = TFT_eSPI();
@@ -67,6 +71,10 @@ CST816S touch(SDA, SCL, RST, INT);
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+double currentTemp = 0.0;
+unsigned long lastTempMillis = 0;
+const unsigned long tempInterval = 2000;
+
 // Function prototype for FreeRTOS task
 void MonitorTask(void *pvParameters);
 
@@ -115,7 +123,10 @@ void setup() {
 
   // setup GPIO
   pinMode(powerEnable, OUTPUT);
-  digitalWrite(powerEnable, HIGH);  // LOW state disables the esp32 EN pin resulting in full shutdown
+  pinMode(valveEnablePin, OUTPUT);  // pull up or down, no real change
+
+  digitalWrite(powerEnable, pinActivate);  // LOW state disables the esp32 EN pin resulting in full shutdown
+  digitalWrite(valveEnablePin, pinDeactivate);
 
   // Set the wakeup pin as an input
   pinMode(BUTTON_PIN, INPUT);
@@ -128,25 +139,23 @@ void setup() {
   // Enable draw and touch
   SetupLCD();
 
+  thermistor = new NTC_Thermistor(
+    SENSOR_PIN,
+    REFERENCE_RESISTANCE,
+    NOMINAL_RESISTANCE,
+    NOMINAL_TEMPERATURE,
+    B_VALUE,
+    ESP32_ANALOG_RESOLUTION
+  );
 
-  // WiFi and OTA features are disabled to save memory
-  // WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  // while (WiFi.status() != WL_CONNECTED) {
-  //   delay(500);
-  //   Serial.print(".");
-  // }
-  // Serial.println(" CONNECTED");
-  // SetupOTA();
-
-  // Init NeoPixel strip, 4 px ring in this case
+  // Init NeoPixel strip, 4 px ring
   strip.begin(); 
   strip.show();
   strip.setBrightness(ledBrightness);
 }
 
 void loop() {
-  
-  // SERIAL INTERFACE for all GUI variables
+  // Serial interface for GUI variables
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();
@@ -194,8 +203,6 @@ void loop() {
       Serial.println("Unknown command. Type 'help' for list.");
     }
   }
-  // Network items
-  // ArduinoOTA.handle();
 
   // Handle touch events
   NavigationDebounce();
@@ -212,16 +219,19 @@ void loop() {
   // Page navigation
   PageNavigation();
 
-  // colorWipe(strip.Color(0, 0, 255), 50); // Blue
-  // colorWipe(strip.Color(0, 255, 0), 50); // Green
-  // colorWipe(strip.Color(255, 0, 0), 50); // Red
-
   HandleLED();
 
+  unsigned long now = millis();
+  if (now - lastTempMillis >= tempInterval) {
+    lastTempMillis = now;
+    currentTemp = ThermistorHandler();
+    Serial.print("Temp: "); Serial.println(currentTemp);
+
+    CheckBattery();
+  }
 }
 
-// **************** Draw Functions - Pages **************** //
-
+// **************** Page Navigation **************** //
 void PageNavigation() {
   static unsigned long lastUpdate = 0;
   unsigned long now = millis();
@@ -282,7 +292,6 @@ void PageNavigation() {
 }
 
 // **************** Pages **************** //
-
 void DrawBlueRingPage() {
   // Blue page with white outter ring and centered text elements
   colorBackground = colorCalmBlue;
@@ -298,7 +307,7 @@ void DrawBlueRingPage() {
   static unsigned long lastUpdate = 0;
   unsigned long now = millis();
 
-  if (now - lastUpdate >= 550) {
+  if (now - lastUpdate >= 50) {
     progress += 1;
     if (progress > 100) progress = 0;
     lastUpdate = now;
@@ -322,11 +331,11 @@ void DrawGreenRingPage() {
     tft.drawSmoothArc(centerX, centerY, maxRadius, maxRadius - ringWidth, 0, 360, colorWhite, colorBackground);
   }
 
-  // drawCenteredTextSprite(centerSubText, batteryVoltage, CenturyGothic24, 80, 42, MC_DATUM);
+  drawCenteredTextSprite(centerSubText, String(batteryVoltage, 2), CenturyGothic24, 80, 42, MC_DATUM);
 
-  // drawCenteredTextSprite(centerText, currentTemperature + "°", CenturyGothic60, 40, 90, MC_DATUM);
+  drawCenteredTextSprite(centerText, String(currentTemp, 1) + "°", CenturyGothic60, 40, 90, MC_DATUM);
 
-  // drawCenteredTextSprite(centerSubText, currentHumidity + "%", CenturyGothic24, 80, 150, MC_DATUM);
+  drawCenteredTextSprite(centerSubText, String(batteryPercentage) + "%", CenturyGothic24, 80, 150, MC_DATUM);
   
 }
 
@@ -460,7 +469,6 @@ void DrawOrbitPulsePage(){
 }
 
 // **************** Draw Functions - Helpers **************** //
-
 void drawCenteredTextSprite(TFT_eSprite &sprite, const String &text, const uint8_t* font, int x, int y, uint8_t textDatum) {
   sprite.fillSprite(colorBackground);
   sprite.setTextColor(colorText, colorBackground);
@@ -474,7 +482,6 @@ void drawCenteredTextSprite(TFT_eSprite &sprite, const String &text, const uint8
 }
 
 // **************** LED Functions **************** //
-
 void HandleLED() {
   unsigned long now = millis();
   if (now - lastColorUpdate >= colorUpdateInterval) {
@@ -511,52 +518,93 @@ uint32_t ColorFromHSV(float h, float s, float v) {
 }
 
 // **************** Sensor Functions **************** //
+double ThermistorHandler() {
+  // Read raw ADC value from sensor pin
+  int raw = analogRead(SENSOR_PIN);
+
+  // Protect against invalid reads
+  if (raw <= 0) {
+    Serial.println("Thermistor read error: raw<=0");
+    return readTemp; // return last known
+  }
+
+  // Convert ADC reading to resistance.
+  // For ESP32 ADC resolution defined in Defines.h as ESP32_ANALOG_RESOLUTION (e.g. 4095)
+  // Voltage divider: Vout = Vcc * (Rthermistor / (Rref + Rthermistor))
+  // So Rthermistor = Rref * (ADC / (ADC_MAX - ADC))
+  float adcMax = (float)ESP32_ANALOG_RESOLUTION;
+  float adc = (float)raw;
+  float rTherm = REFERENCE_RESISTANCE * (adc / (adcMax - adc));
+
+  // Now apply B-parameter equation to get temperature in Kelvin
+  // 1/T = 1/T0 + (1/B) * ln(R/R0)
+  float lnR = log(rTherm / (float)NOMINAL_RESISTANCE);
+  float invT = (1.0f / (NOMINAL_TEMPERATURE + 273.15f)) + (lnR / (float)B_VALUE);
+  float tempK = 1.0f / invT;
+  tempK -= 5.5555556; // lowers final Fahrenheit by ≈10°F
+  float tempC = tempK - 273.15f;
+  float tempF = tempC * 9.0f / 5.0f + 32.0f;
+
+  readTemp = tempF;
+
+  // Optional debug output
+  Serial.print("ADC: "); Serial.print(raw); Serial.print(" R: "); Serial.print(rTherm); Serial.print(" C: "); Serial.println(tempC);
+
+  return readTemp;
+}
+
+// **************** Battery Functions **************** //
+void CheckBattery() {
+  // Read the analog value from the battery pin
+  int rawValue = analogRead(batteryPin);
+
+  // Calculate the voltage at the pin
+  float measuredVoltage = (rawValue * adcReferenceVoltage) / adcResolution * calibrationFactor; 
+
+  // Calculate the actual battery voltage
+  batteryVoltage = measuredVoltage * (R1 + R2) / R2;
+
+  // Convert battery voltage to percentage
+  batteryPercentage = voltageToPercentage(batteryVoltage);
+}
+
+int voltageToPercentage(float voltage) {
+  // If voltage is above the highest value in the table, return 100%
+  if (voltage >= voltageTable[0]) {
+    return 100;
+  }
+
+  // If voltage is below the lowest value in the table, return 0%
+  if (voltage <= voltageTable[numPoints - 1]) {
+    return 0;
+  }
+
+  // Otherwise, interpolate between the nearest values in the table
+  for (int i = 0; i < numPoints - 1; i++) {
+    if (voltage > voltageTable[i + 1]) {
+      float voltageDiff = voltageTable[i] - voltageTable[i + 1];
+      float percentageDiff = percentageTable[i] - percentageTable[i + 1];
+      float interpolationFactor = (voltage - voltageTable[i + 1]) / voltageDiff;
+      return percentageTable[i + 1] + interpolationFactor * percentageDiff;
+    }
+  }
+
+  // Fallback in case something goes wrong (should never reach here)
+  return 0;
+}
 
 // **************** Network Functions **************** //
 
-// void SetupOTA() {
-//   // Authentication details
-//   ArduinoOTA.setHostname(OTA_HOST_NAME);
-//   ArduinoOTA.setPassword(OTA_PASSWORD);
-//
-//   ArduinoOTA
-//     .onStart([]() {
-//       String type;
-//       if (ArduinoOTA.getCommand() == U_FLASH) {
-//         type = "sketch";
-//       } else {  // U_SPIFFS
-//         type = "filesystem";
-//       }
-//
-//       // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-//       Serial.println("Start updating " + type);
-//     })
-//     .onEnd([]() {
-//       Serial.println("\nEnd");
-//     })
-//     .onProgress([](unsigned int progress, unsigned int total) {
-//       Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-//     })
-//     .onError([](ota_error_t error) {
-//       Serial.printf("Error[%u]: ", error);
-//       if (error == OTA_AUTH_ERROR) {
-//         Serial.println("Auth Failed");
-//       } else if (error == OTA_BEGIN_ERROR) {
-//         Serial.println("Begin Failed");
-//       } else if (error == OTA_CONNECT_ERROR) {
-//         Serial.println("Connect Failed");
-//       } else if (error == OTA_RECEIVE_ERROR) {
-//         Serial.println("Receive Failed");
-//       } else if (error == OTA_END_ERROR) {
-//         Serial.println("End Failed");
-//       }
-//     });
-//
-//   ArduinoOTA.begin();
-//   Serial.println("OTA Initialized");
-// }
-
 // **************** User Interface Functions **************** //
+void CreateAndFillSprite(TFT_eSprite &sprite, int width, int height, uint16_t fillColor, const String &spriteName) {
+  if (!sprite.createSprite(width, height)) {
+    Serial.print("Sprite (");
+    Serial.print(spriteName);
+    Serial.println(") creation failed!");
+  } else {
+    sprite.fillSprite(fillColor);
+  }
+}
 
 void SetupLCD() {
   // Configure LCD initial state, tft can be used if the element is static, sprite should be used for dynamic objects
@@ -577,16 +625,6 @@ void SetupLCD() {
   analogWrite(BACKLIGHT, backlightLevel);
 
   touch.begin();
-}
-
-void CreateAndFillSprite(TFT_eSprite &sprite, int width, int height, uint16_t fillColor, const String &spriteName) {
-  if (!sprite.createSprite(width, height)) {
-    Serial.print("Sprite (");
-    Serial.print(spriteName);
-    Serial.println(") creation failed!");
-  } else {
-    sprite.fillSprite(fillColor);
-  }
 }
 
 void NavigationDebounce() {
@@ -617,7 +655,6 @@ void DrawAnimatedProgressBar(int x, int y, int width, int height, int progress, 
 }
 
 // **************** Power Management Functions **************** //
-
 void MonitorTask(void *pvParameters) {
   while (1) {
     bool buttonPinLow = digitalRead(BUTTON_PIN) == LOW;
