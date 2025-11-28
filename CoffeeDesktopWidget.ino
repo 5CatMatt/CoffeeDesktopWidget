@@ -77,6 +77,7 @@ const unsigned long tempInterval = 2000;
 
 // Function prototype for FreeRTOS task
 void MonitorTask(void *pvParameters);
+// [⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿]
 
 void setup() {
   Serial.println("EPM: eyePulseMaxOffset (int, offset from maxRadius)");
